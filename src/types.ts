@@ -18,6 +18,7 @@ export type Inscription = {
   to: string;
   transfer: number;
   rawContent: string;
+  trimContent: string;
   content: Content;
   timestamp: Date;
 };

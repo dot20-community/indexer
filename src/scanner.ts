@@ -59,6 +59,7 @@ class Scanner {
               call0?.method !== 'transferKeepAlive' ||
               call0?.section !== 'balances' ||
               !call0?.args?.dest?.Id ||
+              call0.args.dest.Id.length < 40 ||
               !call0?.args?.value
             ) {
               return;
@@ -66,16 +67,18 @@ class Scanner {
 
             const call1 = methodJson.args.calls[1];
             if (
-              !['remark', 'remarkWithEvent'].includes(
-                call1?.method as string,
-              ) ||
+              !['remark'].includes(call1?.method as string) ||
               call1?.section !== 'system' ||
               !call1?.args?.remark
             ) {
               return;
             }
 
-            const remark = call1.args.remark as string;
+            // Remove the spaces in the memo, replace single quotes with double quotes, then convert everything to lowercase
+            const remark = (call1.args.remark as string)
+              .replaceAll(' ', '')
+              .replaceAll("'", '"')
+              .toLowerCase();
             // Try to parse the remark as a JSON object
             let content: Content;
             try {
@@ -96,7 +99,6 @@ class Scanner {
               blockTime = await this.getBlockTime(blockHash);
             }
 
-            content.tick = content.tick.toUpperCase();
             return {
               blockNumber: number,
               blockHash: blockHash.toHex(),
@@ -107,8 +109,10 @@ class Scanner {
               transfer: parseInt(
                 (call0.args.value as string).replace(/,/g, ''),
               ),
-              rawContent: remark,
+              rawContent: call1.args.remark,
+              trimContent: remark,
               content: content,
+              method: call1.method,
               timestamp: new Date(blockTime || 0),
             } as Inscription;
           }

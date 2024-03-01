@@ -9,7 +9,7 @@ generator client {
 }
 
 datasource db {
-  provider = "mysql"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -27,7 +27,7 @@ model Account {
   created DateTime
   updated DateTime @updatedAt
 
-  @@unique([address, tick], map: "uk_address_tick")
+  @@unique([address, tick])
   @@map("account")
 }
 
@@ -37,14 +37,15 @@ model AccountTx {
   to            String
   blockNumber   BigInt   @map("block_number")
   extrinsicHash String   @map("extrinsic_hash")
+  transfer      BigInt
   tick          String
   op            OP
   amount        BigInt
   created       DateTime
 
-  @@unique([extrinsicHash], map: "uk_extrinsic_hash")
-  @@index([from], name: "idx_from")
-  @@index([to], name: "idx_to")
+  @@unique([extrinsicHash])
+  @@index([from])
+  @@index([to])
   @@map("account_tx")
 }
 
@@ -60,24 +61,8 @@ model Deploy {
   end           BigInt
   created       DateTime
 
-  @@unique([extrinsicHash], map: "uk_extrinsic_hash")
-  @@unique([tick], name: "uk_tick")
-  @@index([from], name: "idx_from")
+  @@unique([extrinsicHash])
+  @@index([from])
+  @@index([to])
   @@map("deploy")
-}
-
-model Inscription {
-  id            BigInt   @id @default(autoincrement())
-  from          String
-  to            String
-  blockNumber   BigInt   @map("block_number")
-  extrinsicHash String   @map("extrinsic_hash")
-  transfer      BigInt
-  content       String
-  created       DateTime
-
-  @@unique([extrinsicHash], map: "uk_extrinsic_hash")
-  @@index([from], name: "idx_from")
-  @@index([to], name: "idx_to")
-  @@map("inscription")
 }
