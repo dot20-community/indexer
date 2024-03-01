@@ -1,18 +1,15 @@
 import { ApiPromise, WsProvider } from '@polkadot/api';
-import { Content, Record } from './types.js';
+import { Content, Inscription, OP } from './types.js';
 
 class Scanner {
   blockStart: number;
   endpoint: string;
   concurrency: number;
 
+  private supportOPs: OP[] = ['deploy', 'mint', 'transfer'];
   private api!: ApiPromise;
 
-  constructor(
-    blockStart: number | null,
-    endpoint: string | null,
-    concurrency: number | null,
-  ) {
+  constructor(blockStart?: number, endpoint?: string, concurrency?: number) {
     this.blockStart = blockStart || 0;
     this.endpoint = endpoint || 'wss://rpc.polkadot.io';
     this.concurrency = concurrency || 8;
@@ -34,66 +31,96 @@ class Scanner {
     return header.number.toNumber();
   }
 
-  private async resolveBlock(number: number): Promise<Record[]> {
-    const result: Record[] = [];
-
+  private async resolveBlock(number: number): Promise<Inscription[]> {
     const blockHash = await this.api.rpc.chain.getBlockHash(number);
     const signedBlock = await this.api.rpc.chain.getBlock(blockHash);
-    signedBlock.block.extrinsics.forEach((ex, ei) => {
-      if (ex.method.method === 'batchAll' && ex.method.section === 'utility') {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const methodJson = ex.method.toHuman() as any;
-        if (!methodJson?.args?.calls || methodJson.args.calls.length !== 2) {
-          return;
-        }
+    if (!signedBlock.block.extrinsics.length) {
+      return [];
+    }
+    let blockTime: number | undefined;
+    return (
+      await Promise.all(
+        signedBlock.block.extrinsics.map(async (ex, ei) => {
+          if (
+            ex.method.method === 'batchAll' &&
+            ex.method.section === 'utility'
+          ) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const methodJson = ex.method.toHuman() as any;
+            if (
+              !methodJson?.args?.calls ||
+              methodJson.args.calls.length !== 2
+            ) {
+              return;
+            }
 
-        const call0 = methodJson.args.calls[0];
-        if (
-          call0?.method !== 'transferKeepAlive' ||
-          call0?.section !== 'balances' ||
-          !call0?.args?.dest?.Id ||
-          !call0?.args?.value
-        ) {
-          return;
-        }
+            const call0 = methodJson.args.calls[0];
+            if (
+              call0?.method !== 'transferKeepAlive' ||
+              call0?.section !== 'balances' ||
+              !call0?.args?.dest?.Id ||
+              !call0?.args?.value
+            ) {
+              return;
+            }
 
-        const call1 = methodJson.args.calls[1];
-        if (
-          call1?.method !== 'remark' ||
-          call1?.method !== 'remarkWithEvent' ||
-          call1?.section !== 'system' ||
-          !call1?.args?.remark
-        ) {
-          return;
-        }
+            const call1 = methodJson.args.calls[1];
+            if (
+              !['remark', 'remarkWithEvent'].includes(
+                call1?.method as string,
+              ) ||
+              call1?.section !== 'system' ||
+              !call1?.args?.remark
+            ) {
+              return;
+            }
 
-        const remark = call1.args.remark as string;
-        // Try to parse the remark as a JSON object
-        let content: Content;
-        try {
-          content = JSON.parse(remark);
-        } catch (err) {
-          console.error('failed to parse remark as JSON', remark);
-          return;
-        }
+            const remark = call1.args.remark as string;
+            // Try to parse the remark as a JSON object
+            let content: Content;
+            try {
+              content = JSON.parse(remark);
+            } catch (err) {
+              return;
+            }
 
-        result.push({
-          blockNumber: number,
-          blockHash: blockHash.toHex(),
-          extrinsicIndex: ei,
-          extrinsicHash: ex.hash.toHex(),
-          from: ex.signer.toString(),
-          to: call0.args.dest.Id,
-          content,
-        });
-      }
-    });
+            if (
+              content.p !== 'dot-20' ||
+              !this.supportOPs.includes(content.op) ||
+              !content.tick
+            ) {
+              return;
+            }
 
-    return result;
+            if (!blockTime) {
+              blockTime = await this.getBlockTime(blockHash);
+            }
+
+            content.tick = content.tick.toUpperCase();
+            return {
+              blockNumber: number,
+              blockHash: blockHash.toHex(),
+              extrinsicIndex: ei,
+              extrinsicHash: ex.hash.toHex(),
+              from: ex.signer.toString(),
+              to: call0.args.dest.Id,
+              transfer: parseInt(
+                (call0.args.value as string).replace(/,/g, ''),
+              ),
+              rawContent: remark,
+              content: content,
+              timestamp: new Date(blockTime || 0),
+            } as Inscription;
+          }
+        }),
+      )
+    )
+      .filter((e) => e)
+      .map((e) => e as Inscription);
   }
 
   // eslint-disable-next-line no-unused-vars
-  async scan(handler: (record: Record) => Promise<void>) {
+  async scan(handler: (blockInscriptions: Inscription[]) => Promise<void>) {
     let current = this.blockStart;
     let headBlockNumber = await this.getHeadBlockNumber();
     const startTime = Date.now();
@@ -113,9 +140,12 @@ class Scanner {
           this.resolveBlock(current + i),
         );
 
-        const records = (await Promise.all(tasks)).flat();
-        for (const record of records) {
-          await handler(record);
+        const blockInscriptionsBatch = await Promise.all(tasks);
+        for (const blockInscriptions of blockInscriptionsBatch) {
+          if (!blockInscriptions.length) {
+            continue;
+          }
+          await handler(blockInscriptions);
         }
 
         const used = (Date.now() - startTime) / 1000;
@@ -137,6 +167,11 @@ class Scanner {
         await this.reconnect();
       }
     }
+  }
+
+  private async getBlockTime(blockHash: Uint8Array | string): Promise<number> {
+    const apiAt = await this.api.at(blockHash);
+    return parseInt((await apiAt.query.timestamp.now()).toString());
   }
 }
 

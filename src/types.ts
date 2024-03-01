@@ -4,26 +4,20 @@ export type Content = {
   p: string;
   op: OP;
   tick: string;
-  amt: number;
-  start: number;
-  end: number;
+  amt?: number;
+  start?: number;
+  end?: number;
 };
 
-export type Extrinsic = {
+export type Inscription = {
   blockNumber: number;
   blockHash: string;
   extrinsicIndex: number;
   extrinsicHash: string;
   from: string;
   to: string;
-};
-
-export type Record = Extrinsic & {
-  from: string;
-  to: string;
+  transfer: number;
+  rawContent: string;
   content: Content;
-};
-
-export type Deploy = Extrinsic & {
-  blockEnd: number;
+  timestamp: Date;
 };

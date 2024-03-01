@@ -1,0 +1,83 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum OP {
+  deploy
+  mint
+  transfer
+}
+
+model Account {
+  id      BigInt   @id @default(autoincrement())
+  address String
+  tick    String
+  amount  BigInt
+  created DateTime
+  updated DateTime @updatedAt
+
+  @@unique([address, tick], map: "uk_address_tick")
+  @@map("account")
+}
+
+model AccountTx {
+  id            BigInt   @id @default(autoincrement())
+  from          String
+  to            String
+  blockNumber   BigInt   @map("block_number")
+  extrinsicHash String   @map("extrinsic_hash")
+  tick          String
+  op            OP
+  amount        BigInt
+  created       DateTime
+
+  @@unique([extrinsicHash], map: "uk_extrinsic_hash")
+  @@index([from], name: "idx_from")
+  @@index([to], name: "idx_to")
+  @@map("account_tx")
+}
+
+model Deploy {
+  id            BigInt   @id @default(autoincrement())
+  from          String
+  to            String
+  blockNumber   BigInt   @map("block_number")
+  extrinsicHash String   @map("extrinsic_hash")
+  tick          String
+  amount        BigInt
+  start         BigInt
+  end           BigInt
+  created       DateTime
+
+  @@unique([extrinsicHash], map: "uk_extrinsic_hash")
+  @@unique([tick], name: "uk_tick")
+  @@index([from], name: "idx_from")
+  @@map("deploy")
+}
+
+model Inscription {
+  id            BigInt   @id @default(autoincrement())
+  from          String
+  to            String
+  blockNumber   BigInt   @map("block_number")
+  extrinsicHash String   @map("extrinsic_hash")
+  transfer      BigInt
+  content       String
+  created       DateTime
+
+  @@unique([extrinsicHash], map: "uk_extrinsic_hash")
+  @@index([from], name: "idx_from")
+  @@index([to], name: "idx_to")
+  @@map("inscription")
+}
