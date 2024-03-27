@@ -131,15 +131,14 @@ class Scanner {
     // eslint-disable-next-line no-constant-condition
     while (true) {
       try {
-        if (current > headBlockNumber) {
-          console.log('waiting for new blocks');
-          await new Promise((resolve) => setTimeout(resolve, 5000));
+        const diff = headBlockNumber - current;
+        const blocksToScan = Math.min(diff, this.concurrency);
+        if (blocksToScan === 0) {
+          // waiting for new blocks
+          await new Promise((resolve) => setTimeout(resolve, 6000));
           headBlockNumber = await this.getHeadBlockNumber();
           continue;
         }
-
-        const diff = headBlockNumber - current;
-        const blocksToScan = Math.min(diff, this.concurrency);
         const tasks = Array.from({ length: blocksToScan }, (_, i) =>
           this.resolveBlock(current + i),
         );
